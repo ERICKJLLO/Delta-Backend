@@ -5,11 +5,14 @@ import db from '../database.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecrettokenkeyforproyectodelta12345';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // POST /api/auth/register - Registrar nueva empresa/usuario
 router.post('/register', async (req, res) => {
   try {
+    if (!JWT_SECRET) {
+      throw new Error('JWT_SECRET no esta configurado.');
+    }
     const {
       email,
       password,
@@ -31,7 +34,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Verificar si el correo ya está registrado
-    const existingUser = db.findUserByEmail(email);
+    const existingUser = await db.findUserByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: 'El correo electrónico ya está registrado.' });
     }
@@ -41,7 +44,7 @@ router.post('/register', async (req, res) => {
     const password_hash = await bcrypt.hash(password, salt);
 
     // Crear usuario en base de datos
-    const newUser = db.createUser({
+    const newUser = await db.createUser({
       email,
       password_hash,
       company_name,
@@ -79,6 +82,9 @@ router.post('/register', async (req, res) => {
 // POST /api/auth/login - Iniciar sesión
 router.post('/login', async (req, res) => {
   try {
+    if (!JWT_SECRET) {
+      throw new Error('JWT_SECRET no esta configurado.');
+    }
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -86,7 +92,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Buscar usuario por correo
-    const user = db.findUserByEmail(email);
+    const user = await db.findUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Credenciales inválidas. El usuario no existe.' });
     }

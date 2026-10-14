@@ -1,94 +1,80 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import 'dotenv/config';
+import pg from 'pg';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const { Pool } = pg;
 
-// Determinar la ruta de almacenamiento de la base de datos (archivo JSON)
-const dbPath = process.env.DB_PATH 
-  ? path.resolve(__dirname, '..', process.env.DB_PATH)
-  : path.resolve(__dirname, '../data/users.json');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL
+});
 
-// Asegurar que el directorio de la base de datos exista
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-// Inicializar el archivo JSON con un arreglo vacío si no existe
-if (!fs.existsSync(dbPath)) {
-  fs.writeFileSync(dbPath, JSON.stringify([], null, 2), 'utf-8');
-  console.log(`[Database] Creada base de datos JSON vacía en: ${dbPath}`);
-} else {
-  console.log(`[Database] Utilizando base de datos existente en: ${dbPath}`);
-}
-
-// Funciones auxiliares para interactuar con la base de datos
-export const getUsers = () => {
-  try {
-    const data = fs.readFileSync(dbPath, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error al leer la base de datos:', error);
-    return [];
-  }
-};
-
-export const saveUsers = (users) => {
-  try {
-    fs.writeFileSync(dbPath, JSON.stringify(users, null, 2), 'utf-8');
-    return true;
-  } catch (error) {
-    console.error('Error al guardar en la base de datos:', error);
-    return false;
-  }
-};
-
-export const findUserByEmail = (email) => {
+export const findUserByEmail = async (email) => {
   if (!email) return null;
-  const users = getUsers();
-  return users.find(user => user.email.toLowerCase() === email.toLowerCase()) || null;
+
+  const result = await pool.query(
+    'SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+    [email]
+  );
+
+  return result.rows[0] || null;
 };
 
-export const findUserById = (id) => {
-  const users = getUsers();
-  return users.find(user => user.id === id) || null;
+export const findUserById = async (id) => {
+  const result = await pool.query(
+    'SELECT * FROM users WHERE id = $1 LIMIT 1',
+    [id]
+  );
+
+  return result.rows[0] || null;
 };
 
-export const createUser = (userData) => {
-  const users = getUsers();
-  
-  // Asignar ID autoincremental
-  const nextId = users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1;
-  
-  const newUser = {
-    id: nextId,
-    email: userData.email,
-    password_hash: userData.password_hash,
-    company_name: userData.company_name,
-    nit: userData.nit,
-    contact_name: userData.contact_name,
-    phone: userData.phone || '',
-    address: userData.address || '',
-    industry: userData.industry || '',
-    employees: userData.employees ? parseInt(userData.employees) : 0,
-    plan_id: userData.plan_id || 'basic',
-    activated_at: userData.activated_at || new Date().toISOString(),
-    created_at: new Date().toISOString()
-  };
-  
-  users.push(newUser);
-  saveUsers(users);
-  console.log(`[Database] Usuario registrado con éxito: ${newUser.email} (ID: ${newUser.id})`);
-  return newUser;
+export const createUser = async (userData) => {
+  const {
+    email,
+    password_hash,
+    company_name,
+    nit,
+    contact_name,
+    phone = '',
+    address = '',
+    industry = '',
+    employees = 0,
+    plan_id = 'basic',
+    activated_at = new Date().toISOString()
+  } = userData;
+
+  const result = await pool.query(
+    `INSERT INTO users (
+      email, password_hash, company_name, nit, contact_name,
+      phone, address, industry, employees, plan_id, activated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    )
+    RETURNING *`,
+    [
+      email,
+      password_hash,
+      company_name,
+      nit,
+      contact_name,
+      phone,
+      address,
+      industry,
+      Number.parseInt(employees, 10) || 0,
+      plan_id,
+      activated_at
+    ]
+  );
+
+  return result.rows[0];
 };
 
-// Exportar un objeto por defecto para mayor compatibilidad
+export const closeDatabase = async () => {
+  await pool.end();
+};
+
 export default {
-  getUsers,
-  saveUsers,
   findUserByEmail,
   findUserById,
-  createUser
+  createUser,
+  closeDatabase
 };
