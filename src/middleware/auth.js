@@ -1,36 +1,46 @@
 import jwt from 'jsonwebtoken';
 import db from '../database.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecrettokenkeyforproyectodelta12345';
+const JWT_SECRET = process.env.JWT_SECRET;
 
-export const requireAuth = (req, res, next) => {
-  // Obtener el header Authorization
+export const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Acceso denegado. No se proporcionó un token de autenticación válido.' });
+    return res.status(401).json({
+      error: 'Se requiere un token de autenticacion valido.'
+    });
   }
 
-  // Extraer token
-  const token = authHeader.split(' ')[1];
+  const token = authHeader.slice(7);
+  if (!JWT_SECRET) {
+    return next(new Error('JWT_SECRET no esta configurado.'));
+  }
+
+  let decoded;
 
   try {
-    // Verificar token
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
-    // Buscar usuario en base de datos
-    const user = db.findUserById(decoded.id);
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return res.status(401).json({
+      error: 'Token invalido o expirado.'
+    });
+  }
+
+  try {
+    const user = await db.findUserById(decoded.id);
+
     if (!user) {
-      return res.status(404).json({ error: 'Usuario no encontrado en el sistema.' });
+      return res.status(401).json({
+        error: 'El usuario asociado al token no existe.'
+      });
     }
 
-    // Guardar información del usuario (sin password_hash) en req.user
-    const { password_hash: _, ...userWithoutPassword } = user;
+    const { password_hash, ...userWithoutPassword } = user;
     req.user = userWithoutPassword;
-    
-    next();
+
+    return next();
   } catch (error) {
-    console.error('[Auth Middleware] Error al verificar token JWT:', error.message);
-    return res.status(401).json({ error: 'Token inválido o expirado.' });
+    return next(error);
   }
 };
