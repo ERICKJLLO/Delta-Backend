@@ -1,3 +1,5 @@
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './docs/swagger.js';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -28,6 +30,11 @@ app.use((req, res, next) => {
 // Rutas API
 app.use('/api/auth', authRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+app.get('/api/docs.json', (req, res) => {
+  res.json(swaggerSpec);
+});
 
 // Ruta de diagnóstico simple
 app.get('/api/health', (req, res) => {
